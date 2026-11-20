@@ -1,0 +1,36 @@
+# .github/workflows/deploy.yml in your application repository:
+# build an image, push it to GHCR, then ask the server to redeploy it.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # lets the job request an OIDC token
+    steps:
+      - uses: skvostik/container-redeploy-webhook@v1
+        with:
+          url: https://deploy.example.com
+          id: myapp

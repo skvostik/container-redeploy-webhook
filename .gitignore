@@ -1,0 +1,5 @@
+/container-redeploy-webhook
+/dist/
+*.test
+*.out
+.env

@@ -1,0 +1,30 @@
+# Minimal setup: the webhook talks to the Docker socket directly and listens
+# on localhost only. Put your reverse proxy (Caddy, nginx, Traefik) in front
+# of it to expose it over HTTPS — see the other examples.
+services:
+  redeploy-webhook:
+    image: ghcr.io/skvostik/container-redeploy-webhook:1
+    restart: unless-stopped
+    # Let a running redeploy finish when the webhook is updated (>= REDEPLOY_TIMEOUT).
+    stop_grace_period: 5m
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Optional shared token (min. 16 chars). Leave unset to allow GitHub OIDC only.
+      TOKEN: ${REDEPLOY_TOKEN:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Optional: credentials for private registries (`docker login` on the host).
+      # - /root/.docker/config.json:/config/config.json:ro
+
+  # An application that can be redeployed by
+  #   POST https://deploy.example.com/redeploy/myapp
+  myapp:
+    image: ghcr.io/your-org/myapp:latest
+    restart: unless-stopped
+    labels:
+      skvostik.redeploy.id: myapp
+      # Accept GitHub Actions OIDC tokens from this repository (name or numeric ID).
+      skvostik.redeploy.github.repository: your-org/myapp
+      # Optional: only from this branch.
+      skvostik.redeploy.github.ref: refs/heads/main

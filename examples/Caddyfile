@@ -1,0 +1,4 @@
+# Caddy obtains and renews the certificate automatically.
+deploy.example.com {
+	reverse_proxy 127.0.0.1:8080
+}

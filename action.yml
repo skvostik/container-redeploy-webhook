@@ -1,0 +1,92 @@
+name: Container redeploy webhook
+description: Ask a container-redeploy-webhook instance to pull and recreate a container, authenticated with the job's GitHub OIDC token.
+author: skvostik
+branding:
+  icon: refresh-cw
+  color: blue
+
+inputs:
+  url:
+    description: Base URL of the webhook, e.g. https://deploy.example.com
+    required: true
+  id:
+    description: Value of the skvostik.redeploy.id label of the container(s) to redeploy.
+    required: true
+  audience:
+    description: OIDC audience. Must match GITHUB_AUDIENCE of the webhook.
+    required: false
+    default: container-redeploy-webhook
+  token:
+    description: Shared token (the webhook's TOKEN). When set, it is used instead of an OIDC token.
+    required: false
+    default: ""
+  force:
+    description: Recreate the container even when the image did not change.
+    required: false
+    default: "false"
+  timeout:
+    description: Maximum time in seconds to wait for the webhook to respond.
+    required: false
+    default: "600"
+
+outputs:
+  result:
+    description: JSON response of the webhook.
+    value: ${{ steps.call.outputs.result }}
+
+runs:
+  using: composite
+  steps:
+    - id: call
+      shell: bash
+      env:
+        INPUT_URL: ${{ inputs.url }}
+        INPUT_ID: ${{ inputs.id }}
+        INPUT_AUDIENCE: ${{ inputs.audience }}
+        INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_FORCE: ${{ inputs.force }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+      run: |
+        set -euo pipefail
+
+        if [ -n "$INPUT_TOKEN" ]; then
+          bearer="$INPUT_TOKEN"
+        else
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::No OIDC token available. Add 'permissions: id-token: write' to the job (or pass the 'token' input)."
+            exit 1
+          fi
+          bearer=$(curl -fsS --max-time 30 \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$INPUT_AUDIENCE" |
+            sed -n 's/.*"value":"\([^"]*\)".*/\1/p')
+          if [ -z "$bearer" ]; then
+            echo "::error::Could not obtain an OIDC token."
+            exit 1
+          fi
+        fi
+        echo "::add-mask::$bearer"
+
+        query=""
+        if [ "$INPUT_FORCE" = "true" ]; then query="?force=1"; fi
+
+        out="$RUNNER_TEMP/redeploy-response.json"
+        rm -f "$out"
+        code=$(curl -sS --max-time "$INPUT_TIMEOUT" -o "$out" -w '%{http_code}' -X POST \
+          -H "Authorization: Bearer $bearer" \
+          "${INPUT_URL%/}/redeploy/${INPUT_ID}${query}") || code=000
+
+        cat "$out" 2>/dev/null || true
+        {
+          echo "result<<__REDEPLOY_EOF__"
+          cat "$out" 2>/dev/null || true
+          echo "__REDEPLOY_EOF__"
+        } >> "$GITHUB_OUTPUT"
+
+        case "$code" in
+          200) echo "Redeploy of '$INPUT_ID' finished." ;;
+          401) echo "::error::Unauthorized (HTTP 401): unknown id, or the token/repository/ref does not match the container labels."; exit 1 ;;
+          409) echo "::error::Refused (HTTP 409): the container is not running or cannot be redeployed."; exit 1 ;;
+          000) echo "::error::Could not reach $INPUT_URL"; exit 1 ;;
+          *)   echo "::error::Redeploy failed (HTTP $code)."; exit 1 ;;
+        esac

@@ -1,0 +1,33 @@
+# The webhook never sees the real Docker socket; a socket proxy only lets
+# through the API sections it needs.
+services:
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1   # list, inspect, create, start, stop, rename, remove
+      IMAGES: 1       # pull, inspect
+      NETWORKS: 1     # connect containers to additional networks
+      POST: 1         # allow write operations on the sections above
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [docker-proxy]
+
+  redeploy-webhook:
+    image: ghcr.io/skvostik/container-redeploy-webhook:1
+    restart: unless-stopped
+    # Let a running redeploy finish when the webhook is updated (>= REDEPLOY_TIMEOUT).
+    stop_grace_period: 5m
+    depends_on: [docker-proxy]
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      DOCKER_HOST: tcp://docker-proxy:2375
+      TOKEN: ${REDEPLOY_TOKEN:-}
+    # "default" gives access to the published port and to GitHub (OIDC keys).
+    networks: [default, docker-proxy]
+
+networks:
+  default:
+  docker-proxy:
+    internal: true   # the proxy itself has no outside connectivity

@@ -1,0 +1,24 @@
+# Expose the webhook through an existing Traefik instance with Let's Encrypt.
+# Assumes Traefik watches Docker labels, has an entrypoint "websecure" and a
+# certificate resolver "letsencrypt", and is attached to the "traefik" network.
+services:
+  redeploy-webhook:
+    image: ghcr.io/skvostik/container-redeploy-webhook:1
+    restart: unless-stopped
+    # Let a running redeploy finish when the webhook is updated (>= REDEPLOY_TIMEOUT).
+    stop_grace_period: 5m
+    environment:
+      TOKEN: ${REDEPLOY_TOKEN:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [traefik]
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.redeploy.rule: Host(`deploy.example.com`)
+      traefik.http.routers.redeploy.entrypoints: websecure
+      traefik.http.routers.redeploy.tls.certresolver: letsencrypt
+      traefik.http.services.redeploy.loadbalancer.server.port: "8080"
+
+networks:
+  traefik:
+    external: true
