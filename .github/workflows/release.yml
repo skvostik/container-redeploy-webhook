@@ -17,23 +17,39 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # all tags, for the newest-release check below
+      # Move `latest` and the major tag (e.g. `1`) only when this is the newest
+      # stable release overall / within its major, so tagging a patch for an
+      # older line (v1.1.5 after v1.2.0) doesn't move them backwards.
+      - id: newest
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          stable=$(git tag --list 'v*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V)
+          major=$(echo "$GITHUB_REF_NAME" | cut -d. -f1)
+          newest=$(echo "$stable" | tail -n1)
+          newest_in_major=$(echo "$stable" | { grep "^$major\." || true; } | tail -n1)
+          echo "overall=$([ "$GITHUB_REF_NAME" = "$newest" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "in_major=$([ "$GITHUB_REF_NAME" = "$newest_in_major" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') && steps.newest.outputs.in_major == 'true' }}
+            type=raw,value=latest,enable=${{ steps.newest.outputs.overall == 'true' }}
             type=edge,branch=main
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64,linux/arm/v7

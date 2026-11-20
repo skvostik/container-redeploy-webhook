@@ -14,7 +14,7 @@ services:
     networks: [docker-proxy]
 
   redeploy-webhook:
-    image: ghcr.io/skvostik/container-redeploy-webhook:1
+    image: ghcr.io/skvostik/container-redeploy-webhook:latest
     restart: unless-stopped
     # Let a running redeploy finish when the webhook is updated (>= REDEPLOY_TIMEOUT).
     stop_grace_period: 5m

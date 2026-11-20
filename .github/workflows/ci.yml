@@ -1,10 +1,9 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
-  workflow_call: # run by release.yml before publishing
+  # Pushes to main and release tags run CI through release.yml, before publishing.
+  workflow_call:
 
 permissions:
   contents: read
@@ -13,8 +12,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           # Same toolchain as the Dockerfile (latest 1.27 patch release);
           # go.mod only states the minimum version.
@@ -30,8 +29,22 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: docker build -t container-redeploy-webhook:dev .
       - run: scripts/e2e.sh
         env:
           DOCKER_SOCK: /var/run/docker.sock
+
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t container-redeploy-webhook:scan .
+      # Scans the image that ships: the Go binary's modules and stdlib.
+      # Pinned by commit: trivy-action release tags were hijacked in 2026.
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: container-redeploy-webhook:scan
+          version: v0.76.2
+          severity: HIGH,CRITICAL
+          exit-code: "1"

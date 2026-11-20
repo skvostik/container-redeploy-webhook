@@ -18,7 +18,7 @@ webhook pulls the new image and recreates the container with the same configurat
 ```yaml
 services:
   redeploy-webhook:
-    image: ghcr.io/skvostik/container-redeploy-webhook:1
+    image: ghcr.io/skvostik/container-redeploy-webhook:latest
     restart: unless-stopped
     stop_grace_period: 5m   # let a running redeploy finish when the webhook is updated
     ports:
@@ -49,7 +49,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: skvostik/container-redeploy-webhook@v1
+      - uses: skvostik/container-redeploy-webhook@v0
         with:
           url: https://deploy.example.com
           id: myapp
@@ -204,16 +204,18 @@ scripts/e2e.sh   # end-to-end test; only touches resources prefixed redeploy-e2e
 1. Tag the commit on `main` and push the tag:
 
    ```sh
-   git tag v1.2.3
-   git push origin v1.2.3
+   git tag v0.1.0
+   git push origin v0.1.0
    ```
 
-   The release workflow publishes `ghcr.io/skvostik/container-redeploy-webhook` as `1.2.3`, `1.2`
-   and `1`. Every push to `main` publishes `edge`.
+   The release workflow publishes `ghcr.io/skvostik/container-redeploy-webhook` as `0.1.0` and
+   `0.1`, plus `latest` if it is the newest release. From 1.0 on it also publishes the major tag
+   (`1`) if it is the newest release of that major. Every push to `main` publishes `edge`.
 
-2. Move the major tag, so `uses: skvostik/container-redeploy-webhook@v1` gets the new action:
+2. Move the action's major tag, so `uses: skvostik/container-redeploy-webhook@v0` gets the new
+   action (skip this for a patch of an older line):
 
    ```sh
-   git tag -f v1 v1.2.3
-   git push -f origin v1
+   git tag -f v0 v0.1.0
+   git push -f origin v0
    ```

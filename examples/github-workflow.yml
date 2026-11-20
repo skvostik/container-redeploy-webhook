@@ -30,7 +30,7 @@ jobs:
     permissions:
       id-token: write   # lets the job request an OIDC token
     steps:
-      - uses: skvostik/container-redeploy-webhook@v1
+      - uses: skvostik/container-redeploy-webhook@v0
         with:
           url: https://deploy.example.com
           id: myapp
